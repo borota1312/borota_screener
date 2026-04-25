@@ -6,6 +6,7 @@ import streamlit as st
 import pandas as pd
 import os
 import sys
+import shutil
 from datetime import datetime
 import pytz
 
@@ -85,6 +86,28 @@ st.sidebar.subheader("Pipeline")
 if st.sidebar.button("🚀 Run Full Pipeline", type="primary", use_container_width=True):
     run_pipeline()
     st.rerun()
+
+st.sidebar.markdown("---")
+st.sidebar.subheader("Data Management")
+
+if st.sidebar.button("🗑️ Hapus Folder Data", use_container_width=True):
+    deleted = []
+    if os.path.exists("data/historical"):
+        shutil.rmtree("data/historical")
+        deleted.append("data/historical/")
+    if os.path.exists(backtest.OUTPUT_FILE):
+        os.remove(backtest.OUTPUT_FILE)
+        deleted.append(backtest.OUTPUT_FILE)
+    if os.path.exists("data/screener.csv"):
+        os.remove("data/screener.csv")
+        deleted.append("data/screener.csv")
+    if deleted:
+        st.sidebar.success(f"✅ Dihapus: {', '.join(deleted)}")
+        get_ranking_data.clear()
+        get_entry_signals.clear()
+        st.rerun()
+    else:
+        st.sidebar.info("Tidak ada data untuk dihapus.")
 
 st.sidebar.caption("Screener → Hapus data lama → Fetch → Backtest")
 
