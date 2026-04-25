@@ -7,12 +7,15 @@ import pandas as pd
 import os
 import sys
 from datetime import datetime
+import pytz
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import screener as screener_module
 import fetch_data
 import backtest
+
+WIB = pytz.timezone("Asia/Jakarta")
 
 # ─── KONFIGURASI — harus paling atas ───
 st.set_page_config(
@@ -106,7 +109,7 @@ if df_signals is not None and not df_signals.empty:
     ready_count = len(df_signals[df_signals["signal"].isin(["BUY", "SELL"])])
 
 col1, col2, col3 = st.columns(3)
-col1.metric("Last Update", datetime.now().strftime("%H:%M:%S"))
+col1.metric("Last Update", datetime.now(WIB).strftime("%H:%M:%S WIB"))
 col2.metric("Ranking Stocks", len(df_rank) if df_rank is not None else 0)
 col3.metric("Ready to Entry", ready_count)
 
