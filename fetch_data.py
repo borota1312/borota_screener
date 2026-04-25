@@ -1,24 +1,49 @@
 """
 fetch_data.py — Download data historis dari Yahoo Finance
 Baca ticker dari data/screener.csv, simpan ke data/historical/
+Data selalu dipotong sampai 16:00 ET (market close US) hari terakhir
+agar hasil konsisten antara lokal dan Streamlit Cloud.
 """
 
 import shutil
 import yfinance as yf
 import pandas as pd
 import os
+from datetime import datetime, time
+import pytz
 
 
 # ─── KONFIGURASI ───
 SCREENER_FILE  = "data/screener.csv"
 OUTPUT_FOLDER  = "data/historical"
-TOP_N          = 10       # ambil N saham teratas dari screener
-PERIOD         = "1y"     # periode data historis
-INTERVAL       = "1h"     # interval download (Yahoo max 1h untuk data intraday)
+TOP_N          = 10
+PERIOD         = "1y"
+INTERVAL       = "1h"
+
+# Cutoff: data hanya sampai 16:00 ET (NYSE market close)
+CUTOFF_HOUR_ET = 16
+ET_TZ          = pytz.timezone("America/New_York")
+
+
+def get_cutoff_timestamp() -> pd.Timestamp:
+    """
+    Hitung cutoff timestamp: 16:00 ET hari ini.
+    Kalau sekarang belum jam 16:00 ET, pakai 16:00 ET kemarin.
+    """
+    now_et = datetime.now(ET_TZ)
+    cutoff_today = now_et.replace(hour=CUTOFF_HOUR_ET, minute=0, second=0, microsecond=0)
+
+    if now_et < cutoff_today:
+        # Belum jam 16:00 ET hari ini, pakai kemarin
+        cutoff = cutoff_today - pd.Timedelta(days=1)
+    else:
+        cutoff = cutoff_today
+
+    return pd.Timestamp(cutoff).tz_convert("UTC")
 
 
 def fetch_historical_data(ticker: str, period: str = PERIOD, interval: str = INTERVAL):
-    """Download data historis dari Yahoo Finance."""
+    """Download data historis dari Yahoo Finance, dipotong sampai cutoff 16:00 ET."""
     try:
         data = yf.download(ticker, period=period, interval=interval, progress=False)
 
@@ -30,6 +55,20 @@ def fetch_historical_data(ticker: str, period: str = PERIOD, interval: str = INT
         if isinstance(data.columns, pd.MultiIndex):
             data.columns = data.columns.droplevel(1)
 
+        # Potong data sampai cutoff 16:00 ET
+        cutoff = get_cutoff_timestamp()
+        if data.index.tz is None:
+            data.index = data.index.tz_localize("UTC")
+        else:
+            data.index = data.index.tz_convert("UTC")
+
+        data = data[data.index <= cutoff]
+
+        if data.empty:
+            print(f"  ⚠️  {ticker} | Tidak ada data setelah cutoff")
+            return None
+
+        print(f"  📅 Cutoff: {cutoff.strftime('%Y-%m-%d %H:%M')} UTC | Last bar: {data.index[-1].strftime('%Y-%m-%d %H:%M')} UTC")
         return data
 
     except Exception as e:
