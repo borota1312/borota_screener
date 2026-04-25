@@ -1,0 +1,21 @@
+# Virtual environment
+.venv/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Data files (generated saat runtime)
+data/historical/
+data/screener.csv
+
+# Output files (generated saat runtime)
+ranking.csv
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.kiro/
