@@ -19,3 +19,6 @@ ranking.csv
 # IDE
 .vscode/
 .kiro/
+
+# Streamlit Cloud auto-generated
+.devcontainer/
