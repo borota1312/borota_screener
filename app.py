@@ -42,21 +42,31 @@ def get_entry_signals():
 
 def run_pipeline():
     with st.status("Running pipeline...", expanded=True) as status:
-        status.write("📡 Fetching from TradingView...")
+
+        # Step 1: Screener
+        status.write("📡 Step 1: Fetching from TradingView...")
         df_screener, _ = screener_module.fetch_tradingview_screener(limit=100)
         if df_screener is None or df_screener.empty:
             st.error("❌ Screener gagal")
             return False
         status.update(label="✅ Screener selesai", state="complete")
 
-        status.write("📥 Downloading historical data...")
+        # Step 2: Hapus data lama + fetch ulang
+        import shutil
+        if os.path.exists("data/historical"):
+            shutil.rmtree("data/historical")
+        if os.path.exists(backtest.OUTPUT_FILE):
+            os.remove(backtest.OUTPUT_FILE)
+
+        status.write("📥 Step 2: Downloading historical data...")
         ok = fetch_data.run()
         if not ok:
             st.error("❌ Fetch data gagal")
             return False
         status.update(label="✅ Data downloaded", state="complete")
 
-        status.write("🔬 Running backtest...")
+        # Step 3: Backtest
+        status.write("🔬 Step 3: Running backtest...")
         backtest.main()
         get_ranking_data.clear()
         get_entry_signals.clear()
@@ -68,9 +78,12 @@ def run_pipeline():
 st.sidebar.title("📈 Swing Trading Screener")
 st.sidebar.markdown("---")
 st.sidebar.subheader("Pipeline")
+
 if st.sidebar.button("🚀 Run Full Pipeline", type="primary", use_container_width=True):
     run_pipeline()
     st.rerun()
+
+st.sidebar.caption("Screener → Hapus data lama → Fetch → Backtest")
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("Settings")

@@ -1,9 +1,11 @@
 """
 main.py — Orchestrator pipeline trading
-Skema: screener.py → fetch_data.py → backtest.py
+Skema: Screener → Hapus data lama → Fetch historical → Backtest
 """
 
 import sys
+import os
+import shutil
 import screener as screener_module
 import fetch_data
 import backtest
@@ -21,18 +23,24 @@ def main():
         limit=100,
         symbols=["SYML:SP;SPX", "SYML:NASDAQ;NDX", "SYML:DJ;DJI"],
     )
-
     if df_screener is None or df_screener.empty:
         print("❌ Screener gagal. Pipeline berhenti.")
         sys.exit(1)
-
     print(f"\n✅ Screener selesai: {len(df_screener)} saham → {screener_path}\n")
 
+    # ─── HAPUS DATA LAMA ───
+    print("🗑️  Membersihkan data lama...")
+    if os.path.exists("data/historical"):
+        shutil.rmtree("data/historical")
+        print("   ✅ data/historical dihapus")
+    if os.path.exists(backtest.OUTPUT_FILE):
+        os.remove(backtest.OUTPUT_FILE)
+        print(f"   ✅ {backtest.OUTPUT_FILE} dihapus")
+
     # ─── STEP 2: FETCH DATA ───
-    print("=" * 60)
+    print("\n" + "=" * 60)
     print("📥 STEP 2: Download Historical Data...\n")
     ok = fetch_data.run()
-
     if not ok:
         print("❌ Fetch data gagal. Pipeline berhenti.")
         sys.exit(1)
@@ -42,7 +50,7 @@ def main():
     print("🔬 STEP 3: Backtest & Ranking...\n")
     backtest.main()
 
-    # ─── STEP 4: CEK SINYAL ENTRY HARI INI ───
+    # ─── STEP 4: CEK SINYAL ENTRY ───
     print("=" * 60)
     df_signals = backtest.check_entry_signals()
     if not df_signals.empty:
@@ -50,9 +58,9 @@ def main():
 
     print("\n" + "=" * 60)
     print("🎉 PIPELINE SELESAI!")
-    print("   📄 Screener   → data/screener.csv")
+    print(f"   📄 Screener   → {screener_path}")
     print("   📁 Historical → data/historical/")
-    print("   🏆 Ranking    → data/ranking.csv")
+    print(f"   🏆 Ranking    → {backtest.OUTPUT_FILE}")
     print("=" * 60 + "\n")
 
 
