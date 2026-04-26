@@ -22,3 +22,6 @@ ranking.csv
 
 # Streamlit Cloud auto-generated
 .devcontainer/
+
+# User settings
+data/config.csv

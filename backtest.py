@@ -16,6 +16,7 @@ SL_PCT        = 2.0      # stop loss %
 TP_PCT        = 4.5      # take profit % gross
 MODAL         = 24.0     # total modal per trade ($)
 COMMISSION    = 0.27     # biaya flat per order (beli+jual = $0.27 total)
+COMMISSION_TYPE = "flat" # "flat" = dollar tetap | "pct" = persentase dari modal
 MAX_HOLD_DAYS = 4        # maksimal holding (Senin → Jumat)
 DATA_DIR      = "data/historical"
 OUTPUT_FILE   = "data/ranking.csv"
@@ -43,7 +44,15 @@ def resample_ohlcv(df: pd.DataFrame, rule: str) -> pd.DataFrame:
 
 
 # ─── BACKTEST SATU SAHAM ───
-def backtest(ticker: str, df_1h: pd.DataFrame) -> dict:
+def backtest(ticker: str, df_1h: pd.DataFrame,
+             modal: float = None, commission: float = None,
+             commission_type: str = None,
+             tp_pct: float = None, sl_pct: float = None) -> dict:
+    modal           = modal           if modal           is not None else MODAL
+    commission      = commission      if commission      is not None else COMMISSION
+    commission_type = commission_type if commission_type is not None else COMMISSION_TYPE
+    tp_pct          = tp_pct          if tp_pct          is not None else TP_PCT
+    sl_pct          = sl_pct          if sl_pct          is not None else SL_PCT
     if df_1h.empty or len(df_1h) < 50:
         return None
 
@@ -129,7 +138,13 @@ def backtest(ticker: str, df_1h: pd.DataFrame) -> dict:
                 else:
                     gross_pnl = (position["entry_price"] - exit_price) * position["qty"]
 
-                net_pnl = gross_pnl - COMMISSION
+                # Hitung komisi sesuai tipe
+                if commission_type == "pct":
+                    actual_commission = modal * (commission / 100)
+                else:
+                    actual_commission = commission
+
+                net_pnl = gross_pnl - actual_commission
                 trades.append({
                     "entry_date":  position["entry_date"],
                     "exit_date":   bar_date,
@@ -147,23 +162,23 @@ def backtest(ticker: str, df_1h: pd.DataFrame) -> dict:
         # Entry baru jika tidak ada posisi
         if position is None:
             if bar["buy"]:
-                qty = MODAL / price          # fractional shares
+                qty = modal / price
                 position = {
                     "side":        "long",
                     "entry_price": price,
                     "entry_date":  bar_date,
-                    "sl":          price * (1 - SL_PCT / 100),
-                    "tp":          price * (1 + TP_PCT / 100),
+                    "sl":          price * (1 - sl_pct / 100),
+                    "tp":          price * (1 + tp_pct / 100),
                     "qty":         qty,
                 }
             elif bar["sell"]:
-                qty = MODAL / price
+                qty = modal / price
                 position = {
                     "side":        "short",
                     "entry_price": price,
                     "entry_date":  bar_date,
-                    "sl":          price * (1 + SL_PCT / 100),
-                    "tp":          price * (1 - TP_PCT / 100),
+                    "sl":          price * (1 + sl_pct / 100),
+                    "tp":          price * (1 - tp_pct / 100),
                     "qty":         qty,
                 }
 
@@ -229,11 +244,19 @@ def compute_score(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # ─── MAIN ───
-def main():
+def main(modal: float = None, commission: float = None, commission_type: str = None,
+         tp_pct: float = None, sl_pct: float = None):
+    modal           = modal           if modal           is not None else MODAL
+    commission      = commission      if commission      is not None else COMMISSION
+    commission_type = commission_type if commission_type is not None else COMMISSION_TYPE
+    tp_pct          = tp_pct          if tp_pct          is not None else TP_PCT
+    sl_pct          = sl_pct          if sl_pct          is not None else SL_PCT
+
+    comm_label = f"${commission} flat" if commission_type == "flat" else f"{commission}% dari modal"
     print("=" * 60)
     print("BACKTESTER — SR Multi-TF BuySell")
-    print(f"SL: {SL_PCT}% | TP: {TP_PCT}% | Modal: ${MODAL} | Biaya: ${COMMISSION}")
-    print(f"Max hold: {MAX_HOLD_DAYS} hari | Qty: fractional (${MODAL} / harga entry)")
+    print(f"SL: {SL_PCT}% | TP: {TP_PCT}% | Modal: ${modal} | Biaya: {comm_label}")
+    print(f"Max hold: {MAX_HOLD_DAYS} hari | Qty: fractional (${modal} / harga entry)")
     print("=" * 60)
 
     files = [f for f in os.listdir(DATA_DIR) if f.endswith("_historical.csv")]
@@ -248,9 +271,10 @@ def main():
 
         try:
             df = pd.read_csv(path, index_col=0, parse_dates=True)
-            # Pastikan kolom benar
             df.columns = [c.strip() for c in df.columns]
-            result = backtest(ticker, df)
+            result = backtest(ticker, df, modal=modal, commission=commission,
+                              commission_type=commission_type,
+                              tp_pct=tp_pct, sl_pct=sl_pct)
             if result:
                 results.append(result)
                 print(f"  ✅ {ticker:6s} | {result['total_trades']:3d} trades | "
@@ -279,7 +303,15 @@ def main():
 
 
 # ─── CEK SINYAL ENTRY HARI INI ───
-def check_entry_signals(ranking_file: str = OUTPUT_FILE, data_dir: str = DATA_DIR) -> pd.DataFrame:
+def check_entry_signals(ranking_file: str = OUTPUT_FILE, data_dir: str = DATA_DIR,
+                        modal: float = None, commission: float = None,
+                        commission_type: str = None,
+                        tp_pct: float = None, sl_pct: float = None) -> pd.DataFrame:
+    modal           = modal           if modal           is not None else MODAL
+    commission      = commission      if commission      is not None else COMMISSION
+    commission_type = commission_type if commission_type is not None else COMMISSION_TYPE
+    tp_pct          = tp_pct          if tp_pct          is not None else TP_PCT
+    sl_pct          = sl_pct          if sl_pct          is not None else SL_PCT
     """
     Cek saham mana yang saat ini memenuhi kondisi entry:
     1. Close H4 terbaru breakout di atas resistance H4
@@ -342,9 +374,13 @@ def check_entry_signals(ranking_file: str = OUTPUT_FILE, data_dir: str = DATA_DI
             can_sell = breakout_sell and bear_filter
 
             # Hitung level SL/TP
-            tp_buy = price * (1 + TP_PCT / 100)
-            sl_buy = price * (1 - SL_PCT / 100)
-            net_if_tp = (tp_buy - price) * (MODAL / price) - COMMISSION
+            tp_buy = price * (1 + tp_pct / 100)
+            sl_buy = price * (1 - sl_pct / 100)
+            if commission_type == "pct":
+                actual_commission = modal * (commission / 100)
+            else:
+                actual_commission = commission
+            net_if_tp = (tp_buy - price) * (modal / price) - actual_commission
 
             signals.append({
                 "rank":        int(row["rank"]),
